@@ -1,23 +1,151 @@
 
+/* =========================================
+   MYFINANCE - REAL TIME FINANCIAL SYSTEM
+========================================= */
+
+const menuToggle = document.getElementById("menu-toggle");
+const navigationMenu = document.getElementById("navigation-menu");
+const navItems = document.querySelectorAll(".nav-item[data-view]");
+
 const rupiah = (angka) => {
     return new Intl.NumberFormat("id-ID", {
         style: "currency",
         currency: "IDR",
         maximumFractionDigits: 0
-    }).format(angka || 0);
+    }).format(Number(angka) || 0);
 };
+// Mengubah angka menjadi format ribuan Indonesia
+function formatAngkaIndonesia(value) {
+    const angka = String(value).replace(/\D/g, "");
 
+    if (!angka) return "";
 
-// Mengambil ringkasan keuangan
+    return Number(angka).toLocaleString("id-ID");
+}
+
+// Memasang format otomatis pada semua input Rupiah
+function setupMoneyInputs() {
+    const moneyInputs = document.querySelectorAll(".money-input");
+
+    moneyInputs.forEach((input) => {
+        input.addEventListener("input", () => {
+            const posisiAwal = input.selectionStart;
+            const panjangAwal = input.value.length;
+
+            input.value = formatAngkaIndonesia(input.value);
+
+            const selisih = input.value.length - panjangAwal;
+            const posisiBaru = Math.max(0, posisiAwal + selisih);
+
+            input.setSelectionRange(posisiBaru, posisiBaru);
+        });
+    });
+}
+
+// Mengambil angka murni untuk dikirim ke backend
+function ambilNominal(id) {
+    const nilai = document.getElementById(id).value;
+    return Number(nilai.replace(/\D/g, "")) || 0;
+}
+async function fetchJSON(url, options = {}) {
+    const response = await fetch(url, options);
+
+    if (response.status === 401) {
+        window.location.href = "/login";
+        throw new Error("Sesi login telah berakhir.");
+    }
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.detail || "Terjadi kesalahan.");
+    }
+
+    return data;
+}
+
+/* =========================================
+   NAVIGASI MENU
+========================================= */
+
+function showView(viewName) {
+    document.querySelectorAll(".view-section").forEach(section => {
+        section.classList.remove("active");
+    });
+
+    const selectedView = document.getElementById(`view-${viewName}`);
+
+    if (!selectedView) return;
+
+    selectedView.classList.add("active");
+
+    navItems.forEach(item => {
+        item.classList.toggle(
+            "active",
+            item.dataset.view === viewName
+        );
+    });
+
+    navigationMenu.classList.add("hidden");
+    menuToggle.setAttribute("aria-expanded", "false");
+
+    window.scrollTo({
+        top: 0,
+        behavior: "smooth"
+    });
+
+    if (viewName === "dashboard") {
+        refreshDashboard();
+    }
+
+    if (viewName === "anggaran") {
+        loadBudget();
+    }
+
+    if (viewName === "riwayat") {
+        loadTransactions();
+    }
+}
+
+menuToggle.addEventListener("click", () => {
+    const isHidden = navigationMenu.classList.toggle("hidden");
+
+    menuToggle.setAttribute(
+        "aria-expanded",
+        String(!isHidden)
+    );
+});
+
+navItems.forEach(item => {
+    item.addEventListener("click", () => {
+        showView(item.dataset.view);
+    });
+});
+
+document.addEventListener("click", event => {
+    if (
+        !event.target.closest(".menu-container") &&
+        !navigationMenu.classList.contains("hidden")
+    ) {
+        navigationMenu.classList.add("hidden");
+        menuToggle.setAttribute("aria-expanded", "false");
+    }
+});
+
+document.addEventListener("keydown", event => {
+    if (event.key === "Escape") {
+        navigationMenu.classList.add("hidden");
+        menuToggle.setAttribute("aria-expanded", "false");
+    }
+});
+
+/* =========================================
+   DASHBOARD
+========================================= */
+
 async function loadSummary() {
     try {
-        const response = await fetch("/api/summary");
-
-        if (!response.ok) {
-            throw new Error("Gagal mengambil ringkasan");
-        }
-
-        const data = await response.json();
+        const data = await fetchJSON("/api/summary");
 
         document.getElementById("saldo").textContent =
             rupiah(data.saldo);
@@ -29,266 +157,204 @@ async function loadSummary() {
             rupiah(data.total_pengeluaran);
 
     } catch (error) {
-        console.error(error);
+        console.error("Gagal memuat ringkasan:", error);
     }
 }
 
+async function refreshDashboard() {
+    await loadSummary();
+    await runFuzzyAnalysis();
+}
 
-// Mengambil riwayat transaksi
+/* =========================================
+   RIWAYAT TRANSAKSI
+========================================= */
+
 async function loadTransactions() {
-    const list = document.getElementById("transaction-list");
+    const transactionList = document.getElementById("transaction-list");
 
     try {
-        const response = await fetch("/api/transactions");
+        const transactions = await fetchJSON("/api/transactions");
 
-        if (!response.ok) {
-            throw new Error("Gagal mengambil transaksi");
-        }
+        transactionList.innerHTML = "";
 
-        const transactions = await response.json();
-
-        list.innerHTML = "";
-
-        if (transactions.length === 0) {
-            list.innerHTML = `
+        if (!transactions || transactions.length === 0) {
+            transactionList.innerHTML = `
                 <tr>
-                    <td colspan="5">Belum ada transaksi.</td>
+                    <td colspan="6" style="text-align:center;">
+                        Belum ada transaksi.
+                    </td>
                 </tr>
             `;
             return;
         }
 
-        transactions.forEach((item) => {
+        transactions.forEach(transaction => {
             const row = document.createElement("tr");
 
-            const date = document.createElement("td");
-            date.textContent = item.transaction_date;
+            const values = [
+                transaction.transaction_date || "-",
+                transaction.category || "-",
+                transaction.description || "-",
+                transaction.type || "-",
+                rupiah(transaction.amount)
+            ];
 
-            const category = document.createElement("td");
-            category.textContent = item.category;
-
-            const type = document.createElement("td");
-            type.textContent = item.type;
-            type.className = item.type === "pemasukan"
-                ? "income" : "expense";
-
-            const amount = document.createElement("td");
-            amount.textContent = rupiah(item.amount);
-            amount.className = type.className;
-
-            // Membuat tombol hapus
-            const action = document.createElement("td");
-            const deleteButton = document.createElement("button");
-
-            deleteButton.textContent = "Hapus";
-            deleteButton.type = "button";
-            deleteButton.className = "delete-button";
-
-            deleteButton.addEventListener("click", () => {
-                deleteTransaction(item.id);
+            values.forEach(value => {
+                const cell = document.createElement("td");
+                cell.textContent = value;
+                row.appendChild(cell);
             });
 
-            action.appendChild(deleteButton);
+            const actionCell = document.createElement("td");
 
-            row.append(date, category, type, amount, action);
-            list.appendChild(row);
+            const deleteButton = document.createElement("button");
+            deleteButton.textContent = "Hapus";
+            deleteButton.className = "delete-btn";
+
+            deleteButton.addEventListener("click", () => {
+                deleteTransaction(transaction.id);
+            });
+
+            actionCell.appendChild(deleteButton);
+            row.appendChild(actionCell);
+
+            transactionList.appendChild(row);
         });
 
     } catch (error) {
-        console.error(error);
+        console.error("Gagal memuat transaksi:", error);
 
-        list.innerHTML = `
+        transactionList.innerHTML = `
             <tr>
-                <td colspan="5">Gagal memuat transaksi.</td>
+                <td colspan="6">Gagal memuat transaksi.</td>
             </tr>
         `;
     }
 }
 
+/* =========================================
+   SINKRONISASI SELURUH DATA
+========================================= */
 
-// Menghapus transaksi
+async function refreshAllFinancialData() {
+    await Promise.all([
+        loadSummary(),
+        loadTransactions()
+    ]);
+
+    await runFuzzyAnalysis();
+}
+
+/* =========================================
+   TAMBAH TRANSAKSI
+========================================= */
+
+const transactionForm = document.getElementById("transaction-form");
+
+const categorySelect = document.getElementById("category");
+const otherCategoryField = document.getElementById("other-category-field");
+const otherCategoryInput = document.getElementById("other-category");
+
+// Menampilkan kolom kategori tambahan
+categorySelect.addEventListener("change", () => {
+    if (categorySelect.value === "lainnya") {
+        otherCategoryField.classList.remove("hidden");
+        otherCategoryInput.required = true;
+    } else {
+        otherCategoryField.classList.add("hidden");
+        otherCategoryInput.required = false;
+        otherCategoryInput.value = "";
+    }
+});
+
+transactionForm.addEventListener("submit", async event => {
+    event.preventDefault();
+
+    const message = document.getElementById("form-message");
+
+    
+const selectedCategory = categorySelect.value;
+
+const finalCategory = selectedCategory === "lainnya"
+    ? otherCategoryInput.value.trim()
+    : selectedCategory;
+
+const transaction = {
+    type: document.getElementById("type").value,
+    category: finalCategory,
+    amount: ambilNominal("amount"),
+    description: document.getElementById("description").value.trim(),
+    transaction_date: document.getElementById("transaction-date").value
+};
+
+
+    try {
+        await fetchJSON("/api/transactions", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(transaction)
+        });
+
+        message.textContent = "Transaksi berhasil disimpan!";
+        message.style.color = "#4de0a5";
+
+        transactionForm.reset();
+        setToday();
+
+        await refreshAllFinancialData();
+
+    } catch (error) {
+        message.textContent = error.message;
+        message.style.color = "#ff647c";
+    }
+});
+
+/* =========================================
+   HAPUS TRANSAKSI
+========================================= */
+
 async function deleteTransaction(id) {
-    const confirmation = confirm(
-        "Apakah kamu yakin ingin menghapus transaksi ini?"
-    );
-
-    if (!confirmation) {
+    if (!confirm("Yakin ingin menghapus transaksi ini?")) {
         return;
     }
 
     try {
-        const response = await fetch(
-            `/api/transactions/${id}`,
-            {
-                method: "DELETE"
-            }
-        );
+        await fetchJSON(`/api/transactions/${id}`, {
+            method: "DELETE"
+        });
 
-        const result = await response.json();
+        alert("Transaksi berhasil dihapus!");
 
-        if (!response.ok) {
-            throw new Error(
-                result.detail || "Gagal menghapus transaksi"
-            );
-        }
-
-        alert("Transaksi berhasil dihapus.");
-
-        // Memperbarui data setelah transaksi dihapus
-        await loadTransactions();
-        await loadSummary();
+        await refreshAllFinancialData();
 
     } catch (error) {
         alert(error.message);
-        console.error(error);
     }
 }
 
+/* =========================================
+   TANGGAL OTOMATIS
+========================================= */
 
-// Menambahkan transaksi
-document.getElementById("transaction-form")
-    .addEventListener("submit", async (event) => {
-
-        event.preventDefault();
-
-        const message = document.getElementById("form-message");
-
-        const transaction = {
-            type: document.getElementById("type").value,
-            category: document.getElementById("category").value,
-            amount: Number(document.getElementById("amount").value),
-            description: document.getElementById("description").value,
-            transaction_date:
-                document.getElementById("transaction-date").value
-        };
-
-        try {
-            const response = await fetch("/api/transactions", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(transaction)
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(
-                    result.detail || "Gagal menyimpan transaksi"
-                );
-            }
-
-            message.textContent = "Transaksi berhasil disimpan!";
-            message.style.color = "green";
-
-            
-// Menambahkan transaksi dengan validasi input
-document.getElementById("transaction-form")
-    .addEventListener("submit", async (event) => {
-
-        event.preventDefault();
-
-        const message = document.getElementById("form-message");
-
-        const type = document.getElementById("type").value;
-        const category = document.getElementById("category").value;
-        const amount = Number(
-            document.getElementById("amount").value
-        );
-        const description =
-            document.getElementById("description").value;
-        const transactionDate =
-            document.getElementById("transaction-date").value;
-
-        // Validasi jenis transaksi
-        if (!type) {
-            message.textContent = "Silakan pilih jenis transaksi.";
-            message.style.color = "red";
-            return;
-        }
-
-        // Validasi kategori
-        if (!category) {
-            message.textContent = "Silakan pilih kategori transaksi.";
-            message.style.color = "red";
-            return;
-        }
-
-        // Validasi nominal
-        if (!Number.isFinite(amount) || amount <= 0) {
-            message.textContent =
-                "Nominal transaksi harus lebih dari Rp0.";
-            message.style.color = "red";
-            return;
-        }
-
-        // Validasi tanggal
-        if (!transactionDate) {
-            message.textContent = "Tanggal transaksi wajib diisi.";
-            message.style.color = "red";
-            return;
-        }
-
-        const transaction = {
-            type: type,
-            category: category,
-            amount: amount,
-            description: description,
-            transaction_date: transactionDate
-        };
-
-        try {
-            const response = await fetch("/api/transactions", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(transaction)
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(
-                    result.detail || "Gagal menyimpan transaksi"
-                );
-            }
-
-            message.textContent = "Transaksi berhasil disimpan!";
-            message.style.color = "green";
-
-            document.getElementById("transaction-form").reset();
-            setToday();
-
-            await loadSummary();
-            await loadTransactions();
-
-        } catch (error) {
-            message.textContent = error.message;
-            message.style.color = "red";
-        }
-    });
-
-
-
-// Mengatur tanggal hari ini
 function setToday() {
-    const today = new Date();
+    const dateInput = document.getElementById("transaction-date");
 
-    const localDate = new Date(
-        today.getTime() - today.getTimezoneOffset() * 60000
-    ).toISOString().slice(0, 10);
-
-    document.getElementById("transaction-date").value = localDate;
+    if (dateInput) {
+        dateInput.value = new Date().toLocaleDateString("en-CA");
+    }
 }
 
+/* =========================================
+   PENGATURAN ANGGARAN
+========================================= */
 
-// Menampilkan atau menyembunyikan input anggaran manual
 const budgetMode = document.getElementById("budget-mode");
 const manualBudgetField = document.getElementById("manual-budget-field");
 
-budgetMode.addEventListener("change", function () {
+budgetMode.addEventListener("change", () => {
     if (budgetMode.value === "manual") {
         manualBudgetField.classList.remove("hidden");
     } else {
@@ -296,264 +362,195 @@ budgetMode.addEventListener("change", function () {
     }
 });
 
-
-// Memuat data anggaran dari API
 async function loadBudget() {
     try {
-        const response = await fetch("/api/budgets");
-        const data = await response.json();
-
-        if (data.daily_budget === undefined) {
-            return;
-        }
+        const data = await fetchJSON("/api/budgets");
 
         document.getElementById("budget-initial").textContent =
-            rupiah(data.initial_balance);
+            data.initial_balance !== undefined
+                ? rupiah(data.initial_balance)
+                : "Belum diatur";
 
         document.getElementById("daily-budget").textContent =
-            rupiah(data.daily_budget);
+            data.daily_budget !== undefined
+                ? rupiah(data.daily_budget)
+                : "Belum diatur";
 
         document.getElementById("budget-mode-result").textContent =
-            data.budget_mode === "otomatis" ? "Otomatis" : "Manual";
-
-        // Mengisi kembali form dengan data terakhir
-        document.getElementById("initial-balance").value =
-            data.initial_balance;
-
-        document.getElementById("fixed-expenses").value =
-            data.fixed_expenses;
-
-        document.getElementById("savings-target").value =
-            data.savings_target;
-
-        document.getElementById("start-date").value =
-            data.start_date;
-
-        document.getElementById("end-date").value =
-            data.end_date;
-
-        document.getElementById("budget-mode").value =
-            data.budget_mode;
-
-        if (data.budget_mode === "manual") {
-            manualBudgetField.classList.remove("hidden");
-
-            document.getElementById("manual-daily-budget").value =
-                data.daily_budget;
-        } else {
-            manualBudgetField.classList.add("hidden");
-        }
+            data.budget_mode || "Belum diatur";
 
     } catch (error) {
         console.error("Gagal memuat anggaran:", error);
     }
 }
 
+/* =========================================
+   SIMPAN ANGGARAN
+========================================= */
 
+const budgetForm = document.getElementById("budget-form");
 
-// Menyimpan pengaturan anggaran dengan validasi
-document.getElementById("budget-form")
-    .addEventListener("submit", async function (event) {
+budgetForm.addEventListener("submit", async event => {
+    event.preventDefault();
 
-        event.preventDefault();
+    const message = document.getElementById("budget-message");
 
-        const message = document.getElementById("budget-message");
-
-        const initialBalance = Number(
-            document.getElementById("initial-balance").value
-        );
-
-        const fixedExpenses = Number(
-            document.getElementById("fixed-expenses").value
-        );
-
-        const savingsTarget = Number(
-            document.getElementById("savings-target").value
-        );
-
-        const startDate =
-            document.getElementById("start-date").value;
-
-        const endDate =
-            document.getElementById("end-date").value;
-
-        const manualDailyBudget = Number(
-            document.getElementById("manual-daily-budget").value
-        );
-
-        // Validasi saldo awal
-        if (
-            document.getElementById("initial-balance").value === "" ||
-            !Number.isFinite(initialBalance) ||
-            initialBalance <= 0
-        ) {
-            message.textContent =
-                "Saldo awal harus lebih dari Rp0.";
-            message.style.color = "red";
-            return;
-        }
-
-        // Validasi pengeluaran tetap
-        if (
-            !Number.isFinite(fixedExpenses) ||
-            fixedExpenses < 0
-        ) {
-            message.textContent =
-                "Pengeluaran tetap tidak boleh negatif.";
-            message.style.color = "red";
-            return;
-        }
-
-        // Validasi target tabungan
-        if (
-            !Number.isFinite(savingsTarget) ||
-            savingsTarget < 0
-        ) {
-            message.textContent =
-                "Target tabungan tidak boleh negatif.";
-            message.style.color = "red";
-            return;
-        }
-
-        // Validasi tanggal
-        if (!startDate || !endDate) {
-            message.textContent =
-                "Tanggal mulai dan tanggal akhir wajib diisi.";
-            message.style.color = "red";
-            return;
-        }
-
-        if (endDate < startDate) {
-            message.textContent =
-                "Tanggal akhir tidak boleh lebih awal dari tanggal mulai.";
-            message.style.color = "red";
-            return;
-        }
-
-        // Validasi anggaran manual
-        if (
-            budgetMode.value === "manual" &&
-            (
-                !Number.isFinite(manualDailyBudget) ||
-                manualDailyBudget <= 0
-            )
-        ) {
-            message.textContent =
-                "Anggaran harian manual harus lebih dari Rp0.";
-            message.style.color = "red";
-            return;
-        }
-
-        const payload = {
-            initial_balance: initialBalance,
-            fixed_expenses: fixedExpenses,
-            savings_target: savingsTarget,
-            start_date: startDate,
-            end_date: endDate,
-            budget_mode: budgetMode.value,
-            manual_daily_budget: budgetMode.value === "manual"
-                ? manualDailyBudget
-                : null
-        };
-
-        try {
-            const response = await fetch("/api/budgets", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(payload)
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(
-                    result.detail || "Gagal menyimpan anggaran"
-                );
-            }
-
-            message.textContent =
-                "Anggaran berhasil disimpan. Anggaran harian: " +
-                rupiah(result.daily_budget);
-
-            message.style.color = "green";
-
-            await loadBudget();
-            await loadSummary();
-
-        } catch (error) {
-            message.textContent = error.message;
-            message.style.color = "red";
-        }
-    });
-
-
-
-// Menjalankan fungsi saat halaman dibuka
-setToday();
-loadSummary();
-loadTransactions();
-loadBudget();
-
-
-// Menjalankan analisis Fuzzy Mamdani
-async function runFuzzyAnalysis() {
-    const button = document.getElementById("analyze-button");
-    const message = document.getElementById("fuzzy-message");
-
-    button.disabled = true;
-    button.textContent = "Menganalisis...";
+    const budget = {
+        initial_balance: ambilNominal("initial-balance"),
+fixed_expenses: ambilNominal("fixed-expenses"),
+savings_target: ambilNominal("savings-target"),
+manual_daily_budget: document.getElementById("manual-daily-budget").value.trim()
+    ? ambilNominal("manual-daily-budget")
+    : null
+    };
 
     try {
-        const response = await fetch("/api/fuzzy-analysis");
-        const data = await response.json();
+        await fetchJSON("/api/budgets", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(budget)
+        });
 
-        if (!response.ok) {
-            throw new Error(
-                data.detail || "Analisis gagal dilakukan"
-            );
-        }
+        message.textContent = "Pengaturan anggaran berhasil disimpan!";
+        message.style.color = "#4de0a5";
 
-        const analysis = data.analisis_fuzzy;
+        budgetForm.reset();
+        manualBudgetField.classList.add("hidden");
 
-        // Menampilkan nilai fuzzy
-        document.getElementById("fuzzy-score").textContent =
-            analysis.nilai_fuzzy;
-
-        // Menampilkan status keuangan
-        const statusElement = document.getElementById("fuzzy-status");
-        statusElement.textContent = analysis.status;
-
-        statusElement.style.color =
-            analysis.status === "Aman" ? "#16a34a" :
-            analysis.status === "Waspada" ? "#d97706" :
-            "#dc2626";
-
-        // Menampilkan detail analisis
-        document.getElementById("spending-ratio").textContent =
-            analysis.rasio_pengeluaran + "%";
-
-        document.getElementById("balance-ratio").textContent =
-            analysis.rasio_kecukupan_saldo + "%";
-
-        document.getElementById("remaining-days").textContent =
-            data.sisa_hari + " hari";
-
-        message.textContent =
-            "Analisis berhasil diperbarui pada " +
-            data.tanggal_analisis;
+        await loadBudget();
+        await refreshAllFinancialData();
 
     } catch (error) {
         message.textContent = error.message;
+        message.style.color = "#ff647c";
+    }
+});
 
-    } finally {
-        button.disabled = false;
-        button.textContent = "Analisis Keuangan";
+/* =========================================
+   ANALISIS FUZZY MAMDANI
+========================================= */
+
+async function runFuzzyAnalysis() {
+    const fuzzyMessage = document.getElementById("fuzzy-message");
+
+    try {
+        const data = await fetchJSON("/api/fuzzy-analysis");
+
+        const analysis = data.analisis_fuzzy;
+
+        if (!analysis) {
+            throw new Error("Hasil analisis belum tersedia.");
+        }
+
+        const score = analysis.nilai_fuzzy;
+        const status = analysis.status;
+
+        // Update bagian analisis pada halaman anggaran
+        document.getElementById("fuzzy-score").textContent = score;
+        document.getElementById("fuzzy-status").textContent = status;
+        document.getElementById("spending-ratio").textContent =
+            analysis.rasio_pengeluaran;
+        document.getElementById("balance-ratio").textContent =
+            analysis.rasio_kecukupan_saldo;
+        document.getElementById("remaining-days").textContent =
+            data.sisa_hari;
+
+        fuzzyMessage.textContent =
+            "Analisis keuangan berhasil diperbarui.";
+        fuzzyMessage.style.color = "#4de0a5";
+
+        // Update kartu status di Dashboard
+        document.getElementById("dashboard-fuzzy-score").textContent =
+            score;
+
+        document.getElementById("dashboard-fuzzy-status").textContent =
+            status;
+
+        document.getElementById("health-indicator").dataset.status =
+            String(status).toLowerCase();
+
+        const title = document.getElementById("dashboard-health-title");
+        const description = document.getElementById(
+            "dashboard-health-description"
+        );
+
+        if (status.toLowerCase() === "aman") {
+            title.textContent = "Keuangan dalam kondisi aman";
+            description.textContent =
+                "Kondisi keuangan masih terkendali. Pertahankan kebiasaan mengatur pengeluaran.";
+        } else if (status.toLowerCase() === "waspada") {
+            title.textContent = "Keuangan perlu diperhatikan";
+            description.textContent =
+                "Pengeluaran mulai perlu diperhatikan. Evaluasi kebutuhan sebelum melakukan transaksi berikutnya.";
+        } else if (status.toLowerCase() === "berlebihan") {
+            title.textContent = "Pengeluaran melewati batas aman";
+            description.textContent =
+                "Kurangi pengeluaran yang tidak mendesak dan prioritaskan kebutuhan utama.";
+        } else {
+            title.textContent = "Status keuangan diperbarui";
+            description.textContent =
+                "Periksa hasil analisis keuangan untuk mengetahui kondisi terkini.";
+        }
+
+        document.getElementById("dashboard-analysis-time").textContent =
+            "Diperbarui: " + new Date().toLocaleTimeString("id-ID");
+
+    } catch (error) {
+        console.warn("Analisis Fuzzy belum tersedia:", error);
+
+        if (fuzzyMessage) {
+            fuzzyMessage.textContent =
+                "Analisis belum tersedia. Pastikan pengaturan anggaran sudah dibuat.";
+            fuzzyMessage.style.color = "#ffc857";
+        }
+
+        document.getElementById("dashboard-fuzzy-status").textContent =
+            "Belum tersedia";
+
+        document.getElementById("dashboard-fuzzy-score").textContent =
+            "-";
+
+        document.getElementById("dashboard-health-title").textContent =
+            "Menunggu data keuangan";
+
+        document.getElementById("dashboard-health-description").textContent =
+            "Atur anggaran dan catat transaksi untuk mendapatkan analisis kondisi keuangan.";
+
+        document.getElementById("health-indicator").dataset.status =
+            "belum tersedia";
     }
 }
 
+/* =========================================
+   TOMBOL ANALISIS MANUAL
+========================================= */
 
-// Menghubungkan tombol dengan fungsi analisis
-document.getElementById("analyze-button")
-    .addEventListener("click", runFuzzyAnalysis);
+const analyzeButton = document.getElementById("analyze-button");
+
+if (analyzeButton) {
+    analyzeButton.addEventListener("click", runFuzzyAnalysis);
+}
+
+/* =========================================
+   INISIALISASI MYFINANCE
+========================================= */
+
+async function initializeMyFinance() {
+    setupMoneyInputs();
+
+    setToday();
+
+    await Promise.all([
+        loadSummary(),
+        loadTransactions(),
+        loadBudget()
+    ]);
+
+    await runFuzzyAnalysis();
+
+    showView("dashboard");
+}
+
+initializeMyFinance();

@@ -9,245 +9,464 @@
 </head>
 <body>
 
-    <aside class="sidebar">
-        <h2>MyFinance</h2>
-
-        <nav>
-            <a href="/" class="active">Dashboard</a>
-            <a href="#anggaran">Pengaturan Anggaran</a>
-            <a href="#transaksi">Transaksi</a>
-            <a href="#riwayat">Riwayat Transaksi</a>
-        </nav>
-
-        <!-- Tombol Logout -->
-        <form action="/logout" method="POST">
-            <button type="submit" class="logout-btn">
-                Logout
-            </button>
-        </form>
-
-        <p class="sidebar-footer">Manage Your Money</p>
-    </aside>
-
     <main class="main-content">
+
+        <!-- HEADER -->
         <header class="topbar">
-            <div>
-                <h1>Dashboard</h1>
-                <p>Selamat datang di MyFinance!</p>
+            <div class="header-info">
+                <h1>MyFinance</h1>
+                <p>Manage Your Money, Control Your Future.</p>
             </div>
-            <span class="user-label">Mahasiswa</span>
+
+            <div class="menu-container">
+                <button
+                    type="button"
+                    id="menu-toggle"
+                    class="menu-toggle"
+                    aria-label="Buka menu navigasi"
+                    aria-expanded="false"
+                >
+                    ⋮
+                </button>
+
+                <nav id="navigation-menu" class="navigation-menu hidden">
+                    <button type="button" class="nav-item active" data-view="dashboard">
+                        <span>⌂</span> Dashboard
+                    </button>
+
+                    <button type="button" class="nav-item" data-view="anggaran">
+                        <span>◫</span> Pengaturan Anggaran
+                    </button>
+
+                    <button type="button" class="nav-item" data-view="transaksi">
+                        <span>＋</span> Transaksi
+                    </button>
+
+                    <button type="button" class="nav-item" data-view="riwayat">
+                        <span>◷</span> Riwayat Transaksi
+                    </button>
+
+                    <div class="menu-divider"></div>
+
+                    <form action="/logout" method="POST">
+                        <button type="submit" class="nav-item logout-menu">
+                            <span>↪</span> Logout
+                        </button>
+                    </form>
+                </nav>
+            </div>
         </header>
 
-        <section class="summary-grid">
-            <div class="summary-card balance">
-                <p>Saldo Saat Ini</p>
-                <h2 id="saldo">Rp0</h2>
+
+        <!-- HALAMAN DASHBOARD -->
+        <section class="view-section active" id="view-dashboard">
+
+            <div class="page-heading">
+                <h2>Dashboard</h2>
+                <p>Ringkasan kondisi keuangan kamu.</p>
             </div>
 
-            <div class="summary-card">
-                <p>Total Pemasukan</p>
-                <h2 id="pemasukan">Rp0</h2>
-            </div>
+            <section class="summary-grid">
+                <div class="summary-card balance">
+                    <p>Saldo Saat Ini</p>
+                    <h2 id="saldo">Rp0</h2>
+                </div>
 
-            <div class="summary-card">
-                <p>Total Pengeluaran</p>
-                <h2 id="pengeluaran">Rp0</h2>
-            </div>
+                <div class="summary-card">
+                    <p>Total Pemasukan</p>
+                    <h2 id="pemasukan">Rp0</h2>
+                </div>
+
+                <div class="summary-card">
+                    <p>Total Pengeluaran</p>
+                    <h2 id="pengeluaran">Rp0</h2>
+                </div>
+            </section>
+
         </section>
-<section class="panel budget-panel" id="anggaran">
-    <h2>Pengaturan Anggaran</h2>
-    <p class="panel-description">
-        Atur dana dan kebutuhan keuangan selama satu periode.
-    </p>
 
-    <form id="budget-form">
-        <div class="form-grid">
-            <div>
-                <label for="initial-balance">Dana Awal Periode (Rp)</label>
-                <input
-                    type="number"
-                    id="initial-balance"
-                    min="1"
-                    placeholder="Contoh: 2000000"
-                    required
-                >
-            </div>
+<!-- STATUS ANALISIS KEUANGAN -->
+<section class="financial-health panel">
 
-            <div>
-                <label for="fixed-expenses">Pengeluaran Tetap (Rp)</label>
-                <input
-                    type="number"
-                    id="fixed-expenses"
-                    min="0"
-                    value="0"
-                    required
-                >
-            </div>
-
-            <div>
-                <label for="savings-target">Target Tabungan (Rp)</label>
-                <input
-                    type="number"
-                    id="savings-target"
-                    min="0"
-                    value="0"
-                    required
-                >
-            </div>
-
-            <div>
-                <label for="start-date">Tanggal Mulai</label>
-                <input type="date" id="start-date" required>
-            </div>
-
-            <div>
-                <label for="end-date">Tanggal Selesai</label>
-                <input type="date" id="end-date" required>
-            </div>
-
-            <div>
-                <label for="budget-mode">Mode Anggaran</label>
-                <select id="budget-mode" required>
-                    <option value="otomatis">Otomatis</option>
-                    <option value="manual">Manual</option>
-                </select>
-            </div>
-
-            <div id="manual-budget-field" class="hidden">
-                <label for="manual-daily-budget">
-                    Anggaran Harian Manual (Rp)
-                </label>
-                <input
-                    type="number"
-                    id="manual-daily-budget"
-                    min="1"
-                    placeholder="Contoh: 60000"
-                >
-            </div>
+    <div class="health-header">
+        <div>
+            <span class="health-eyebrow">MYFINANCE INTELLIGENCE</span>
+            <h2>Status Kesehatan Keuangan</h2>
+            <p>Pemantauan kondisi keuangan berdasarkan Fuzzy Mamdani.</p>
         </div>
 
-        <button type="submit">Simpan Anggaran</button>
-        <p id="budget-message" role="status"></p>
-    </form>
-</section>
-
-<section class="budget-result panel">
-    <h2>Ringkasan Anggaran</h2>
-
-    <div class="summary-grid">
-        <div class="summary-card">
-            <p>Dana Awal</p>
-            <h2 id="budget-initial">Rp0</h2>
-        </div>
-
-        <div class="summary-card">
-            <p>Anggaran Harian</p>
-            <h2 id="daily-budget">Rp0</h2>
-        </div>
-
-        <div class="summary-card">
-            <p>Mode Anggaran</p>
-            <h2 id="budget-mode-result">Belum diatur</h2>
-        </div>
-    </div>
-</section>
-<section class="panel fuzzy-panel">
-    <h2>Analisis Keuangan</h2>
-    <p class="panel-description">
-        Hasil analisis kondisi keuangan menggunakan
-        metode Fuzzy Mamdani.
-    </p>
-
-    <div class="fuzzy-result">
-        <div class="fuzzy-score-card">
-            <p>Nilai Fuzzy</p>
-            <h2 id="fuzzy-score">-</h2>
-            <span id="fuzzy-status">Menunggu analisis</span>
-        </div>
-
-        <div class="fuzzy-details">
-            <div>
-                <p>Rasio Pengeluaran</p>
-                <h3 id="spending-ratio">-</h3>
-            </div>
-
-            <div>
-                <p>Kecukupan Saldo</p>
-                <h3 id="balance-ratio">-</h3>
-            </div>
-
-            <div>
-                <p>Sisa Hari</p>
-                <h3 id="remaining-days">-</h3>
-            </div>
+        <div class="health-indicator" id="health-indicator">
+            <span class="health-dot"></span>
+            <span id="dashboard-fuzzy-status">Menunggu analisis</span>
         </div>
     </div>
 
-    <button type="button" id="analyze-button">
-        Analisis Keuangan
-    </button>
+    <div class="health-content">
 
-    <p id="fuzzy-message" role="status"></p>
+        <div class="health-score">
+            <span>SKOR KEUANGAN</span>
+            <h3 id="dashboard-fuzzy-score">-</h3>
+            <p>Nilai analisis Fuzzy</p>
+        </div>
+
+        <div class="health-message">
+            <h3 id="dashboard-health-title">Belum ada analisis</h3>
+            <p id="dashboard-health-description">
+                Lakukan pengaturan anggaran dan catat transaksi
+                untuk mengetahui kondisi keuangan kamu.
+            </p>
+        </div>
+
+    </div>
+
+    <div class="health-footer">
+        <span>MYFINANCE FINANCIAL MONITORING</span>
+        <span id="dashboard-analysis-time">Belum diperbarui</span>
+    </div>
+
 </section>
-        <section class="content-grid">
-            <div class="panel" id="transaksi">
+
+
+        <!-- HALAMAN PENGATURAN ANGGARAN -->
+        <section class="view-section" id="view-anggaran">
+
+            <div class="page-heading">
+                <h2>Pengaturan Anggaran</h2>
+                <p>Atur dan pantau anggaran keuangan kamu.</p>
+            </div>
+
+            <section class="panel budget-panel">
+                <h2>Pengaturan Anggaran</h2>
+
+                <p class="panel-description">
+                    Atur dana dan kebutuhan keuangan selama satu periode.
+                </p>
+
+                <form id="budget-form">
+
+                    <div class="form-grid">
+
+                        <div>
+                            <label for="initial-balance">Dana Awal Periode (Rp)</label>
+<div class="money-input-wrapper">
+    <span class="money-prefix">Rp</span>
+    <input
+        type="text"
+        id="initial-balance"
+        inputmode="numeric"
+        class="money-input"
+        placeholder="0"
+        autocomplete="off"
+        required
+    >
+</div>
+                            
+                        </div>
+
+                        <div>
+                            <label for="fixed-expenses">Pengeluaran Tetap (Rp)</label>
+                            <div class="money-input-wrapper">
+    <span class="money-prefix">Rp</span>
+    <input
+        type="text"
+        id="fixed-expenses"
+        inputmode="numeric"
+        class="money-input"
+        placeholder="0"
+        autocomplete="off"
+        required
+    >
+</div>
+                        </div>
+
+                        <div>
+                            <label for="savings-target">Target Tabungan (Rp)</label>
+                            <div class="money-input-wrapper">
+    <span class="money-prefix">Rp</span>
+    <input
+        type="text"
+        id="savings-target"
+        inputmode="numeric"
+        class="money-input"
+        placeholder="0"
+        autocomplete="off"
+        required
+    >
+</div>
+                        </div>
+
+                        <div>
+                            <label for="start-date">Tanggal Mulai</label>
+                            <input type="date" id="start-date" required>
+                        </div>
+
+                        <div>
+                            <label for="end-date">Tanggal Selesai</label>
+                            <input type="date" id="end-date" required>
+                        </div>
+
+                        <div>
+                            <label for="budget-mode">Mode Anggaran</label>
+                            <select id="budget-mode" required>
+                                <option value="otomatis">Otomatis</option>
+                                <option value="manual">Manual</option>
+                            </select>
+                        </div>
+
+                        <div id="manual-budget-field" class="hidden">
+                            <label for="manual-daily-budget">
+                                Anggaran Harian Manual (Rp)
+                            </label>
+
+                            <div class="money-input-wrapper">
+    <span class="money-prefix">Rp</span>
+    <input
+        type="text"
+        id="manual-daily-budget"
+        inputmode="numeric"
+        class="money-input"
+        placeholder="0"
+        autocomplete="off"
+    >
+</div>
+                        </div>
+
+                    </div>
+
+                    <button type="submit">Simpan Anggaran</button>
+                    <p id="budget-message" role="status"></p>
+
+                </form>
+            </section>
+
+
+            <!-- RINGKASAN ANGGARAN -->
+            <section class="budget-result panel">
+                <h2>Ringkasan Anggaran</h2>
+
+                <div class="summary-grid">
+
+                    <div class="summary-card">
+                        <p>Dana Awal</p>
+                        <h2 id="budget-initial">Belum diatur</h2>
+                    </div>
+
+                    <div class="summary-card">
+                        <p>Anggaran Harian</p>
+                        <h2 id="daily-budget">Belum diatur</h2>
+                    </div>
+
+                    <div class="summary-card">
+                        <p>Mode Anggaran</p>
+                        <h2 id="budget-mode-result">Belum diatur</h2>
+                    </div>
+
+                </div>
+            </section>
+
+
+            <!-- ANALISIS FUZZY -->
+            <section class="panel fuzzy-panel">
+
+                <h2>Analisis Keuangan</h2>
+
+                <p class="panel-description">
+                    Hasil analisis kondisi keuangan menggunakan
+                    metode Fuzzy Mamdani.
+                </p>
+
+                <div class="fuzzy-result">
+
+                    <div class="fuzzy-score-card">
+                        <p>Nilai Fuzzy</p>
+                        <h2 id="fuzzy-score">-</h2>
+                        <span id="fuzzy-status">Menunggu analisis</span>
+                    </div>
+
+                    <div class="fuzzy-details">
+
+                        <div>
+                            <p>Rasio Pengeluaran</p>
+                            <h3 id="spending-ratio">-</h3>
+                        </div>
+
+                        <div>
+                            <p>Kecukupan Saldo</p>
+                            <h3 id="balance-ratio">-</h3>
+                        </div>
+
+                        <div>
+                            <p>Sisa Hari</p>
+                            <h3 id="remaining-days">-</h3>
+                        </div>
+
+                    </div>
+                </div>
+
+                <button type="button" id="analyze-button">
+                    Analisis Keuangan
+                </button>
+
+                <p id="fuzzy-message" role="status"></p>
+
+            </section>
+
+        </section>
+
+
+        <!-- HALAMAN TRANSAKSI -->
+        <section class="view-section" id="view-transaksi">
+
+            <div class="page-heading">
+                <h2>Transaksi</h2>
+                <p>Catat pemasukan dan pengeluaran keuangan.</p>
+            </div>
+
+            <section class="panel transaction-panel">
+
                 <h2>Tambah Transaksi</h2>
 
                 <form id="transaction-form">
+
                     <label for="type">Jenis Transaksi</label>
+
                     <select id="type" required>
                         <option value="pemasukan">Pemasukan</option>
                         <option value="pengeluaran">Pengeluaran</option>
                     </select>
 
                     <label for="category">Kategori</label>
-                    <input id="category" type="text"
-                           placeholder="Contoh: Makanan" required>
+
+                    
+<label for="category">Kategori Transaksi</label>
+
+<select id="category" required>
+    <option value="" disabled selected>-- Pilih Kategori --</option>
+
+    <optgroup label="Kebutuhan Sehari-hari">
+        <option value="Makanan">Makanan</option>
+        <option value="Minuman">Minuman</option>
+        <option value="Transportasi">Transportasi</option>
+        <option value="Kos">Kos</option>
+        <option value="Belanja">Belanja</option>
+        <option value="Pulsa & Internet">Pulsa & Internet</option>
+        <option value="Pendidikan">Pendidikan</option>
+        <option value="Kesehatan">Kesehatan</option>
+        <option value="Hiburan">Hiburan</option>
+        <option value="Kebutuhan Harian">Kebutuhan Harian</option>
+    </optgroup>
+
+    <optgroup label="Pemasukan">
+        <option value="Uang Saku">Uang Saku</option>
+        <option value="Beasiswa">Beasiswa</option>
+        <option value="Gaji">Gaji</option>
+        <option value="Freelance">Freelance</option>
+        <option value="Hadiah">Hadiah</option>
+    </optgroup>
+
+    <option value="lainnya">Lainnya</option>
+</select>
+
+<div id="other-category-field" class="hidden">
+    <label for="other-category">Masukkan Kategori Lainnya</label>
+    <input
+        type="text"
+        id="other-category"
+        placeholder="Contoh: Servis Laptop"
+    >
+</div>
+
 
                     <label for="amount">Nominal (Rp)</label>
-                    <input id="amount" type="number"
-                           min="1" step="1" placeholder="Contoh: 25000" required>
+
+                    <div class="money-input-wrapper">
+    <span class="money-prefix">Rp</span>
+    <input
+        id="amount"
+        type="text"
+        inputmode="numeric"
+        class="money-input"
+        placeholder="0"
+        autocomplete="off"
+        required
+    >
+</div>
 
                     <label for="description">Keterangan</label>
-                    <input id="description" type="text"
-                           placeholder="Keterangan transaksi">
+
+                    <input
+                        id="description"
+                        type="text"
+                        placeholder="Keterangan transaksi"
+                    >
 
                     <label for="transaction-date">Tanggal</label>
-                    <input id="transaction-date" type="date" required>
+
+                    <input
+                        id="transaction-date"
+                        type="date"
+                        required
+                    >
 
                     <button type="submit">Simpan Transaksi</button>
+
                     <p id="form-message" role="status"></p>
+
                 </form>
+
+            </section>
+
+        </section>
+
+
+        <!-- HALAMAN RIWAYAT TRANSAKSI -->
+        <section class="view-section" id="view-riwayat">
+
+            <div class="page-heading">
+                <h2>Riwayat Transaksi</h2>
+                <p>Daftar pemasukan dan pengeluaran yang tercatat.</p>
             </div>
 
-            <div class="panel" id="riwayat">
-                <h2>Riwayat Transaksi</h2>
+            <section class="panel history-panel">
+
+                <h2>Daftar Transaksi</h2>
+
                 <div class="table-wrapper">
+
                     <table>
                         <thead>
-    <tr>
-        <th>Tanggal</th>
-        <th>Kategori</th>
-        <th>Jenis</th>
-        <th>Nominal</th>
-        <th>Aksi</th>
-    </tr>
-</thead>
+                            <tr>
+                                <th>Tanggal</th>
+                                <th>Kategori</th>
+                                <th>Keterangan</th>
+                                <th>Jenis</th>
+                                <th>Nominal</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+
                         <tbody id="transaction-list">
                             <tr>
-                                <td colspan="4">Memuat transaksi...</td>
+                                <td colspan="6">Memuat transaksi...</td>
                             </tr>
                         </tbody>
                     </table>
+
                 </div>
-            </div>
+
+            </section>
+
         </section>
 
+
+        <!-- FOOTER -->
         <footer>
             MyFinance &copy; 2026
         </footer>
+
     </main>
 
     <script src="/static/js/script.js"></script>
+
 </body>
 </html>
