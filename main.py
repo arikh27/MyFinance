@@ -1,572 +1,823 @@
-import os
-from secrets import compare_digest
+impor os
+dari secrets impor compare_digest
 
-from fuzzy_logic import analyze_finances
+dari tanggal dan waktu impor tanggal
+dari math impor isfinite
 
-from fastapi import FastAPI, Request, HTTPException, Form
+dari fastapi impor FastAPI, Request, HTTPException, Form
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from pydantic import BaseModel
-from datetime import date
-from math import isfinite
+dari pydantic impor BaseModel
+dari pwdlib impor PasswordHash
 
-from database import initialize_database, get_connection
+dari fuzzy_logic impor analyze_finances
+dari database impor initialize_database, dapatkan_koneksi
 
 
-app = FastAPI(
-    title="MyFinance",
-    description="Aplikasi Monitoring Keuangan Pribadi",
-    version="1.0.0"
+# =========================================================
+# KONFIGURASI APLIKASI
+# =========================================================
+
+aplikasi = FastAPI(
+    judul="Keuangan Saya",
+    deskripsi="Aplikasi Pemantauan Keuangan Pribadi",
+    versi="1.0.0"
 )
 
+password_hash = PasswordHash.recommended()
+
+# Membuat database tabel jika belum tersedia
 initialize_database()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
+template = Jinja2Templates(directory="templates")
+
+
+# =========================================================
+# MIDDLEWARE AUTENTIKASI
+# =========================================================
+
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    path = request.url.path
+    jalur = request.url.path
 
-    if path in ["/login", "/logout"] or path.startswith("/static/"):
-        return await call_next(request)
+    # Halaman yang boleh dibuka tanpa login
+    jalur publik = [
+        "/login",
+        "/logout",
+        "/setup-account"
+    ]
 
-    if not request.session.get("authenticated"):
-        if path.startswith("/api/"):
-            return JSONResponse(
+    jika path ada di public_paths atau path.startswith("/static/"):
+        kembali menunggu panggilan_berikutnya(permintaan)
+
+    # Semua halaman dan API lainnya wajib memiliki sesi pengguna
+    jika tidak request.session.get("user_id"):
+        jika path.dimulai dengan("/api/"):
+            kembalikan JSONResponse(
                 {"detail": "Silakan login terlebih dahulu"},
-                status_code=401
+                kode_status=401
             )
 
-        return RedirectResponse("/login", status_code=303)
+        kembalikan RedirectResponse("/login", status_code=303)
 
-    return await call_next(request)
+    kembali menunggu panggilan_berikutnya(permintaan)
 
 
-app.add_middleware(
+aplikasi.add_middleware(
     SessionMiddleware,
-    secret_key=os.getenv("SESSION_SECRET"),
+    kunci_rahasia=os.getenv("SEKRET_SESI"),
     session_cookie="myfinance_session",
-    max_age=60 * 60 * 8,
-    same_site="lax",
+    usia_maksimum = 60 * 60 * 8,
+    situs_sama="longgar",
     https_only=os.getenv("SESSION_HTTPS_ONLY", "false").lower() == "true"
 )
 
-# Model data transaksi
-class Transaction(BaseModel):
-    type: str
-    category: str
-    amount: float
-    description: str = ""
-    transaction_date: date
+
+# =========================================================
+# DATA MODEL
+# =========================================================
+
+kelas Transaksi(BaseModel):
+    tipe: string
+    kategori: str
+    jumlah: float
+    deskripsi: str = "
+    tanggal_transaksi: tanggal
 
 
-# Model data anggaran
-class Budget(BaseModel):
-    initial_balance: float
-    fixed_expenses: float = 0
-    savings_target: float = 0
-    start_date: date
-    end_date: date
-    budget_mode: str = "otomatis"
+kelas Anggaran(BaseModel):
+    saldo_awal: float
+    pengeluaran_tetap: float = 0
+    target_tabungan: float = 0
+    tanggal_mulai: tanggal
+    tanggal_akhir: tanggal
+    mode_anggaran: str = "otomatis"
     manual_daily_budget: float | None = None
 
-# Halaman login
+
+# =========================================================
+# SETUP AKUN UTAMA
+# =========================================================
+
+EMAIL PEMILIK = "arsannn203@gmail.com"
+
+
+@app.get("/setup-account", response_class=HTMLResponse)
+def setup_account_page(request: Request):
+    koneksi = mendapatkan_koneksi()
+
+    mencoba:
+        dengan conn.cursor() sebagai kursor:
+            kursor.eksekusi("SELECT id FROM users LIMIT 1")
+            pengguna_yang_ada = kursor.ambil_satu()
+    Akhirnya:
+        koneksi.tutup()
+
+    # Setup ditutup jika sudah ada akun
+    jika pengguna sudah ada:
+        kembalikan RedirectResponse("/login", status_code=303)
+
+    kembalikan template.TemplateResponse(
+        permintaan=permintaan,
+        nama="setup.html",
+        konteks={"kesalahan": Tidak ada}
+    )
+
+
+@app.post("/setup-account", response_class=HTMLResponse)
+def setup_account(
+    Permintaan: Permintaan,
+    nama_lengkap: str = Formulir(...),
+    email: str = Formulir(...),
+    kata sandi: str = Formulir(...),
+    konfirmasi_kata_sandi: str = Formulir(...),
+    setup_key: str = Form(...)
+):
+    expected_key = os.getenv("OWNER_SETUP_KEY")
+
+    jika tidak expected_key:
+        menimbulkan HTTPException(
+            kode_status=500,
+            detail="OWNER_SETUP_KEY belum dikonfigurasi."
+        )
+
+    jika tidak membandingkan_digest(setup_key, expected_key):
+        menimbulkan HTTPException(
+            kode_status=403,
+            detail="Kunci pengaturan keamanan tidak valid."
+        )
+
+    nama_lengkap = nama_lengkap.strip()
+    email = email.strip().lower()
+
+    jika full_name atau len(full_name) tidak lebih dari 100:
+        menimbulkan HTTPException(
+            kode_status=400,
+            detail="Nama lengkap wajib diisi dan maksimal 100 karakter."
+        )
+
+    jika email tidak sama dengan EMAIL PEMILIK:
+        menimbulkan HTTPException(
+            kode_status=400,
+            detail="Email akun utama tidak sesuai."
+        )
+
+    jika panjang kata sandi kurang dari 12 atau panjang kata sandi lebih dari 128:
+        menimbulkan HTTPException(
+            kode_status=400,
+            detail="Kata sandi harus terdiri dari 12 sampai 128 karakter."
+        )
+
+    Jika kata sandi tidak sama dengan konfirmasi kata sandi:
+        kembalikan template.TemplateResponse(
+            permintaan=permintaan,
+            nama="setup.html",
+            konteks={"error": "Konfirmasi kata sandi tidak cocok."},
+            kode_status=400
+        )
+
+    hashed_password = password_hash.hash(password)
+
+    koneksi = mendapatkan_koneksi()
+
+    mencoba:
+        dengan conn.cursor() sebagai kursor:
+            # Mengunci tabel selama setup agar dua proses setup
+            # tidak membuat akun utama secara bersamaan.
+            cursor.execute("KUNCI TABEL pengguna DALAM MODE EKSKLUSIF")
+
+            kursor.eksekusi("SELECT id FROM users LIMIT 1")
+            pengguna_yang_ada = kursor.ambil_satu()
+
+            jika pengguna sudah ada:
+                menimbulkan HTTPException(
+                    kode_status=403,
+                    detail="Proses setup akun utama sudah ditutup."
+                )
+
+            kursor.eksekusi("""
+                INSERT INTO users (full_name, email, password_hash)
+                NILAI (%s, %s, %s)
+                MENGEMBALIKAN id
+            "", (
+                nama lengkap,
+                e-mail,
+                kata sandi yang di-hash
+            ))
+
+            user_id = cursor.fetchone()["id"]
+
+            # Memindahkan seluruh data lama yang belum dimiliki pemiliknya
+            # ke akun utama.
+            kursor.eksekusi("""
+                PERBARUI transaksi
+                SET user_id = %s
+                DI MANA user_id BERNILAI NULL
+            """, (user_id,))
+
+            kursor.eksekusi("""
+                PERBARUI anggaran
+                SET user_id = %s
+                DI MANA user_id BERNILAI NULL
+            """, (user_id,))
+
+        koneksi.commit()
+
+    kecuali Pengecualian:
+        koneksi.rollback()
+        mengangkat
+
+    Akhirnya:
+        koneksi.tutup()
+
+    permintaan.sesi.bersihkan()
+    permintaan.session["authenticated"] = True
+    permintaan.session["user_id"] = user_id
+    permintaan.session["nama_lengkap"] = nama_lengkap
+
+    kembalikan RedirectResponse("/", status_code=303)
+
+
+# =========================================================
+# MASUK DAN KELUAR
+# =========================================================
+
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-    if request.session.get("authenticated"):
-        return RedirectResponse("/", status_code=303)
+    jika request.session.get("user_id"):
+        kembalikan RedirectResponse("/", status_code=303)
 
-    return templates.TemplateResponse(
-        request=request,
-        name="login.html",
-        context={"error": None}
+    kembalikan template.TemplateResponse(
+        permintaan=permintaan,
+        nama="login.html",
+        konteks={"kesalahan": Tidak ada}
     )
 
 
-# Proses login
 @app.post("/login", response_class=HTMLResponse)
-def login(request: Request, password: str = Form(...)):
-    expected_password = os.getenv("APP_PASSWORD")
+def login(
+    Permintaan: Permintaan,
+    email: str = Formulir(...),
+    kata sandi: str = Formulir(...)
+):
+    email = email.strip().lower()
 
-    if not expected_password:
-        raise HTTPException(
-            status_code=500,
-            detail="APP_PASSWORD belum dikonfigurasi."
+    koneksi = mendapatkan_koneksi()
+
+    mencoba:
+        dengan conn.cursor() sebagai kursor:
+            kursor.eksekusi("""
+                Pilih id, nama_lengkap, hash_kata_sandi
+                DARI pengguna
+                DI MANA email = %s
+            """, (email,))
+
+            pengguna = kursor.ambil()
+
+    Akhirnya:
+        koneksi.tutup()
+
+    valid_password = False
+
+    jika pengguna:
+        kata_sandi_valid = hash_sandi.verifikasi(
+            kata sandi,
+            pengguna["hash_kata_sandi"]
         )
 
-    if not compare_digest(password, expected_password):
-        return templates.TemplateResponse(
-            request=request,
-            name="login.html",
-            context={"error": "Password yang kamu masukkan salah."},
-            status_code=401
+    jika kata sandi tidak valid:
+        kembalikan template.TemplateResponse(
+            permintaan=permintaan,
+            nama="login.html",
+            konteks={"error": "Email atau kata sandi tidak sesuai."},
+            kode_status=401
         )
 
-    request.session["authenticated"] = True
+    permintaan.sesi.bersihkan()
+    permintaan.session["authenticated"] = True
+    permintaan.session["user_id"] = user["id"]
+    permintaan.session["nama_lengkap"] = pengguna["nama_lengkap"]
 
-    return RedirectResponse("/", status_code=303)
+    kembalikan RedirectResponse("/", status_code=303)
 
 
-# Proses logout
 @app.post("/logout")
 def logout(request: Request):
-    request.session.clear()
-    return RedirectResponse("/login", status_code=303)
-# Halaman utama
+    permintaan.sesi.bersihkan()
+    kembalikan RedirectResponse("/login", status_code=303)
+
+
+# =========================================================
+#HALAMAN UTAMA DAN STATUS BACKEND
+# =========================================================
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    return templates.TemplateResponse(
-        request=request,
-        name="index.html",
-        context={}
+    kembalikan template.TemplateResponse(
+        permintaan=permintaan,
+        nama="index.html",
+        konteks={
+            "nama_lengkap": permintaan.session.get("nama_lengkap")
+        }
     )
 
 
-# Status backend
 @app.get("/api/status")
 def status():
-    return {
-        "app": "MyFinance",
+    kembali {
+        "aplikasi": "Keuangan Saya",
         "status": "Berjalan"
     }
 
 
-# Menambahkan transaksi
-@app.post("/api/transactions")
-def add_transaction(transaction: Transaction):
+# =========================================================
+# TRANSAKSI
+# =========================================================
 
-    if transaction.type not in ["pemasukan", "pengeluaran"]:
-        raise HTTPException(
-            status_code=400,
+@app.post("/api/transactions")
+def add_transaction(
+    transaksi: Transaksi,
+    Permintaan: Permintaan
+):
+    user_id = request.session["user_id"]
+
+    jika transaksi.ketik tidak ada di ["pemasukan", "pengeluaran"]:
+        menimbulkan HTTPException(
+            kode_status=400,
             detail="Jenis transaksi tidak valid"
         )
 
-    if not transaction.category.strip():
-        raise HTTPException(
-            status_code=400,
+    jika transaction.category.strip() tidak berhasil:
+        menimbulkan HTTPException(
+            kode_status=400,
             detail="Kategori transaksi wajib diisi"
         )
 
-    if (
-        not isfinite(transaction.amount)
-        or transaction.amount <= 0
-    ):
-        raise HTTPException(
-            status_code=400,
+    jika jumlah transaksi tidak terbatas atau jumlah transaksi kurang dari atau sama dengan 0:
+        menimbulkan HTTPException(
+            kode_status=400,
             detail="Nominal harus berupa angka valid dan lebih dari 0"
         )
 
-    if not isinstance(transaction.transaction_date, date):
-        raise HTTPException(
-            status_code=400,
-            detail="Tanggal transaksi tidak valid"
-        )
+    koneksi = mendapatkan_koneksi()
 
-    conn = get_connection()
-
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                INSERT INTO transactions
-                (type, category, amount, description, transaction_date)
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING id
-            """, (
-                transaction.type,
-                transaction.category.strip(),
-                transaction.amount,
-                transaction.description,
-                transaction.transaction_date.isoformat()
+    mencoba:
+        dengan conn.cursor() sebagai kursor:
+            kursor.eksekusi("""
+                MASUKKAN KE transaksi (
+                    ID pengguna,
+                    jenis,
+                    kategori,
+                    jumlah,
+                    keterangan,
+                    tanggal_transaksi
+                )
+                NILAI (%s, %s, %s, %s, %s, %s)
+                MENGEMBALIKAN id
+            "", (
+                ID pengguna,
+                jenis transaksi,
+                transaksi.kategori.strip(),
+                jumlah transaksi,
+                deskripsi transaksi,
+                transaksi.tanggal_transaksi.isoformat()
             ))
 
             transaction_id = cursor.fetchone()["id"]
 
-        conn.commit()
+        koneksi.commit()
 
-    except Exception:
-        conn.rollback()
-        raise
+    kecuali Pengecualian:
+        koneksi.rollback()
+        mengangkat
 
-    finally:
-        conn.close()
+    Akhirnya:
+        koneksi.tutup()
 
-    return {
+    kembali {
         "message": "Transaksi berhasil disimpan",
         "id": transaction_id
     }
 
 
-# Melihat seluruh transaksi
 @app.get("/api/transactions")
-def get_transactions():
+def get_transactions(request: Request):
+    user_id = request.session["user_id"]
 
-    conn = get_connection()
+    koneksi = mendapatkan_koneksi()
 
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                SELECT * FROM transactions
-                ORDER BY transaction_date DESC, id DESC
-            """)
+    mencoba:
+        dengan conn.cursor() sebagai kursor:
+            kursor.eksekusi("""
+                PILIH *
+                DARI transaksi
+                DI MANA user_id = %s
+                Urutkan berdasarkan transaction_date DESC, id DESC
+            """, (user_id,))
 
-            transactions = cursor.fetchall()
+            transaksi = kursor.ambil semua()
 
-        return transactions
+        transaksi pengembalian
 
-    finally:
-        conn.close()
+    Akhirnya:
+        koneksi.tutup()
 
 
-# Ringkasan keuangan
+# =========================================================
+# RINGKASAN KEUANGAN
+# =========================================================
+
 @app.get("/api/summary")
-def get_summary():
+def get_summary(request: Request):
+    user_id = request.session["user_id"]
 
-    conn = get_connection()
+    koneksi = mendapatkan_koneksi()
 
-    try:
-        with conn.cursor() as cursor:
+    mencoba:
+        dengan conn.cursor() sebagai kursor:
 
-            cursor.execute("""
-                SELECT * FROM budgets
-                ORDER BY id DESC LIMIT 1
-            """)
+            # Mengambil anggaran milik pengguna
+            kursor.eksekusi("""
+                PILIH *
+                DARI anggaran
+                DI MANA user_id = %s
+                Urutkan berdasarkan id menurun
+                BATAS 1
+            """, (user_id,))
 
-            budget = cursor.fetchone()
+            anggaran = kursor.ambil_satu()
 
-            if budget is None:
-
-                cursor.execute("""
-                    SELECT
+            # Jika pengguna belum memiliki anggaran
+            Jika anggaran tidak ada:
+                kursor.eksekusi("""
+                    MEMILIH
                         COALESCE(SUM(CASE
-                            WHEN type = 'pemasukan' THEN amount
-                            ELSE 0
-                        END), 0) AS total_income,
+                            KETIKA ketik = 'pemasukan' MAKA jumlah
+                            LAINNYA 0
+                        SELESAI), 0) SEBAGAI total_pendapatan,
                         COALESCE(SUM(CASE
-                            WHEN type = 'pengeluaran' THEN amount
-                            ELSE 0
-                        END), 0) AS total_expense
-                    FROM transactions
-                """)
+                            KETIKA tipe = 'pengeluaran' MAKA jumlah
+                            LAINNYA 0
+                        AKHIR), 0) SEBAGAI total_pengeluaran
+                    DARI transaksi
+                    DI MANA user_id = %s
+                """, (user_id,))
 
-                result = cursor.fetchone()
+                hasil = kursor.ambil_yang_di_kantongi()
 
-                income = result["total_income"]
-                expense = result["total_expense"]
+                pendapatan = hasil["total_pendapatan"]
+                pengeluaran = hasil["total_pengeluaran"]
 
-                return {
-                    "total_pemasukan": income,
-                    "total_pengeluaran": expense,
-                    "saldo": income - expense
+                kembali {
+                    "total_pemasukan": pendapatan,
+                    "total_pengeluaran": pengeluaran,
+                    "saldo": pendapatan - pengeluaran
                 }
 
-            today = date.today().isoformat()
+            # Menghitung transaksi dalam periode anggaran
+            hari ini = tanggal.hari ini().isoformat()
 
-            cursor.execute("""
-                SELECT
+            kursor.eksekusi("""
+                MEMILIH
                     COALESCE(SUM(CASE
-                        WHEN type = 'pemasukan' THEN amount
-                        ELSE 0
-                    END), 0) AS total_income,
+                        KETIKA ketik = 'pemasukan' MAKA jumlah
+                        LAINNYA 0
+                    SELESAI), 0) SEBAGAI total_pendapatan,
                     COALESCE(SUM(CASE
-                        WHEN type = 'pengeluaran' THEN amount
-                        ELSE 0
-                    END), 0) AS total_expense
-                FROM transactions
-                WHERE transaction_date BETWEEN %s AND %s
-            """, (budget["start_date"], today))
+                        KETIKA tipe = 'pengeluaran' MAKA jumlah
+                        LAINNYA 0
+                    AKHIR), 0) SEBAGAI total_pengeluaran
+                DARI transaksi
+                DI MANA user_id = %s
+                DAN transaction_date ANTARA %s DAN %s
+            "", (
+                ID pengguna,
+                anggaran["tanggal_mulai"],
+                Hari ini
+            ))
 
-            result = cursor.fetchone()
+            hasil = kursor.ambil_yang_di_kantongi()
 
-            income = result["total_income"]
-            expense = result["total_expense"]
+            pendapatan = hasil["total_pendapatan"]
+            pengeluaran = hasil["total_pengeluaran"]
 
-            balance = (
-                budget["initial_balance"]
-                + income
-                - expense
+            saldo = (
+                anggaran["saldo_awal"]
+                + pendapatan
+                - pengeluaran
             )
 
-            return {
-                "total_pemasukan": income,
-                "total_pengeluaran": expense,
-                "saldo": balance
+            kembali {
+                "total_pemasukan": pendapatan,
+                "total_pengeluaran": pengeluaran,
+                "saldo": keseimbangan
             }
 
-    finally:
-        conn.close()
+    Akhirnya:
+        koneksi.tutup()
 
 
-# Mengambil pengaturan anggaran
+# =========================================================
+# PENGATURAN ANGGARAN
+# =========================================================
+
 @app.get("/api/budgets")
-def get_budget():
+def get_budget(request: Request):
+    user_id = request.session["user_id"]
 
-    conn = get_connection()
+    koneksi = mendapatkan_koneksi()
 
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                SELECT * FROM budgets
-                ORDER BY id DESC LIMIT 1
-            """)
+    mencoba:
+        dengan conn.cursor() sebagai kursor:
+            kursor.eksekusi("""
+                PILIH *
+                DARI anggaran
+                DI MANA user_id = %s
+                Urutkan berdasarkan id menurun
+                BATAS 1
+            """, (user_id,))
 
-            result = cursor.fetchone()
+            hasil = kursor.ambil_yang_di_kantongi()
 
-        if result is None:
+        jika hasilnya None:
             return {"message": "Anggaran belum diatur"}
 
-        return result
+        kembalikan hasil
 
-    finally:
-        conn.close()
+    Akhirnya:
+        koneksi.tutup()
 
 
-# Menyimpan pengaturan anggaran
 @app.post("/api/budgets")
-def save_budget(budget: Budget):
+def save_budget(
+    Anggaran: Anggaran,
+    Permintaan: Permintaan
+):
+    user_id = request.session["user_id"]
 
-    if (
-        not isfinite(budget.initial_balance)
-        or budget.initial_balance <= 0
-    ):
-        raise HTTPException(
-            status_code=400,
+    jika tidak tak terbatas (saldo awal anggaran) atau saldo awal anggaran <= 0:
+        menimbulkan HTTPException(
+            kode_status=400,
             detail="Dana periode harus berupa angka valid dan lebih dari 0"
         )
 
-    if (
-        not isfinite(budget.fixed_expenses)
-        or budget.fixed_expenses < 0
-    ):
-        raise HTTPException(
-            status_code=400,
+    jika anggaran tetap tidak terbatas atau anggaran tetap kurang dari 0:
+        menimbulkan HTTPException(
+            kode_status=400,
             detail="Pengeluaran tetap tidak boleh negatif atau tidak valid"
         )
 
-    if (
-        not isfinite(budget.savings_target)
-        or budget.savings_target < 0
-    ):
-        raise HTTPException(
-            status_code=400,
+    jika tidak tak terbatas (anggaran.target_penghematan) atau anggaran.target_penghematan < 0:
+        menimbulkan HTTPException(
+            kode_status=400,
             detail="Target tabungan tidak boleh negatif atau tidak valid"
         )
 
-    if budget.end_date < budget.start_date:
-        raise HTTPException(
-            status_code=400,
+    jika tanggal_akhir_anggaran < tanggal_mulai_anggaran:
+        menimbulkan HTTPException(
+            kode_status=400,
             detail="Tanggal akhir tidak boleh lebih awal dari tanggal awal"
         )
 
-    total_days = (
-        budget.end_date - budget.start_date
-    ).days + 1
+    jumlah_hari = (
+        tanggal_akhir_anggaran - tanggal_mulai_anggaran
+    ).hari + 1
 
-    if budget.budget_mode not in ["otomatis", "manual"]:
-        raise HTTPException(
-            status_code=400,
+    jika budget.budget_mode tidak ada di ["otomatis", "manual"]:
+        menimbulkan HTTPException(
+            kode_status=400,
             detail="Mode anggaran tidak valid"
         )
 
-    available_funds = (
-        budget.initial_balance
-        - budget.fixed_expenses
-        - budget.savings_target
+    dana_tersedia = (
+        anggaran.saldo_awal
+        - anggaran.pengeluaran_tetap
+        - target_tabungan_anggaran
     )
 
-    if available_funds <= 0:
-        raise HTTPException(
-            status_code=400,
+    jika dana_tersedia <= 0:
+        menimbulkan HTTPException(
+            kode_status=400,
             detail="Dana tidak mencukupi setelah pengeluaran tetap dan tabungan"
         )
 
     if budget.budget_mode == "otomatis":
+        Anggaran harian = dana yang tersedia / total hari
 
-        daily_budget = available_funds / total_days
-
-    else:
-
-        if (
-            budget.manual_daily_budget is None
-            or not isfinite(budget.manual_daily_budget)
-            or budget.manual_daily_budget <= 0
+    kalau tidak:
+        jika (
+            budget.manual_daily_budget adalah None
+            atau tidak terbatas (anggaran.anggaran_harian_manual)
+            atau budget.manual_daily_budget <= 0
         ):
-            raise HTTPException(
-                status_code=400,
+            menimbulkan HTTPException(
+                kode_status=400,
                 detail="Anggaran manual harus berupa angka valid dan lebih dari 0"
             )
 
-        daily_budget = budget.manual_daily_budget
+        anggaran_harian = anggaran.anggaran_harian_manual
 
-    conn = get_connection()
+    koneksi = mendapatkan_koneksi()
 
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                INSERT INTO budgets (
-                    initial_balance,
-                    fixed_expenses,
-                    savings_target,
-                    daily_budget,
-                    start_date,
-                    end_date,
-                    budget_mode
+    mencoba:
+        dengan conn.cursor() sebagai kursor:
+            kursor.eksekusi("""
+                MASUKKAN KE dalam anggaran (
+                    ID pengguna,
+                    saldo_awal,
+                    pengeluaran tetap,
+                    target_tabungan,
+                    anggaran harian,
+                    tanggal_mulai,
+                    tanggal_akhir,
+                    mode_anggaran
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """, (
-                budget.initial_balance,
-                budget.fixed_expenses,
-                budget.savings_target,
-                daily_budget,
-                budget.start_date.isoformat(),
+                NILAI (%s, %s, %s, %s, %s, %s, %s, %s)
+                MENGEMBALIKAN id
+            "", (
+                ID pengguna,
+                anggaran.saldo_awal,
+                anggaran.pengeluaran_tetap,
+                target_tabungan_anggaran,
+                anggaran harian,
+                anggaran.tanggal_mulai.isoformat(),
                 budget.end_date.isoformat(),
-                budget.budget_mode
+                anggaran.mode_anggaran
             ))
 
             budget_id = cursor.fetchone()["id"]
 
-        conn.commit()
+        koneksi.commit()
 
-    except Exception:
-        conn.rollback()
-        raise
+    kecuali Pengecualian:
+        koneksi.rollback()
+        mengangkat
 
-    finally:
-        conn.close()
+    Akhirnya:
+        koneksi.tutup()
 
-    return {
+    kembali {
         "message": "Anggaran berhasil disimpan",
-        "id": budget_id,
-        "budget_mode": budget.budget_mode,
-        "daily_budget": daily_budget,
-        "total_days": total_days
+        "id": id_anggaran,
+        "mode_anggaran": anggaran.mode_anggaran,
+        "anggaran_harian": anggaran_harian,
+        "jumlah_hari": jumlah_hari
     }
 
 
-# Analisis keuangan menggunakan Fuzzy Mamdani
+# =========================================================
+#ANALISIS KEUANGAN FUZZY MAMDANI
+# =========================================================
+
 @app.get("/api/fuzzy-analysis")
-def fuzzy_analysis():
+def fuzzy_analysis(request: Request):
+    user_id = request.session["user_id"]
 
-    conn = get_connection()
+    koneksi = mendapatkan_koneksi()
 
-    try:
-        with conn.cursor() as cursor:
+    mencoba:
+        dengan conn.cursor() sebagai kursor:
 
-            cursor.execute("""
-                SELECT * FROM budgets
-                ORDER BY id DESC LIMIT 1
-            """)
+            # Mengambil anggaran milik pengguna
+            kursor.eksekusi("""
+                PILIH *
+                DARI anggaran
+                DI MANA user_id = %s
+                Urutkan berdasarkan id menurun
+                BATAS 1
+            """, (user_id,))
 
-            budget = cursor.fetchone()
+            anggaran = kursor.ambil_satu()
 
-            if budget is None:
-                raise HTTPException(
-                    status_code=400,
+            Jika anggaran tidak ada:
+                menimbulkan HTTPException(
+                    kode_status=400,
                     detail="Pengaturan anggaran belum tersedia"
                 )
 
-            today = date.today()
+            hari ini = tanggal.hari ini()
 
-            start_date = date.fromisoformat(budget["start_date"])
-            end_date = date.fromisoformat(budget["end_date"])
+            tanggal_mulai = tanggal.fromisoformat(anggaran["tanggal_mulai"])
+            tanggal_akhir = tanggal.fromisoformat(anggaran["tanggal_akhir"])
 
-            if today < start_date or today > end_date:
-                raise HTTPException(
-                    status_code=400,
+            jika hari ini < start_date atau hari ini > end_date:
+                menimbulkan HTTPException(
+                    kode_status=400,
                     detail="Tanggal hari ini di luar periode anggaran"
                 )
 
-            cursor.execute("""
+            # Menghitung pengeluaran hari ini milik pengguna
+            kursor.eksekusi("""
                 SELECT COALESCE(SUM(amount), 0) AS spending_today
-                FROM transactions
-                WHERE type = 'pengeluaran'
-                AND transaction_date = %s
-            """, (today.isoformat(),))
-
-            spending_today = cursor.fetchone()["spending_today"]
-
-            cursor.execute("""
-                SELECT
-                    COALESCE(SUM(CASE
-                        WHEN type = 'pemasukan' THEN amount
-                        ELSE 0
-                    END), 0) AS income,
-                    COALESCE(SUM(CASE
-                        WHEN type = 'pengeluaran' THEN amount
-                        ELSE 0
-                    END), 0) AS expense
-                FROM transactions
-                WHERE transaction_date BETWEEN %s AND %s
-            """, (
-                budget["start_date"],
-                today.isoformat()
+                DARI transaksi
+                DI MANA user_id = %s
+                DAN tipe = 'pengeluaran'
+                DAN transaction_date = %s
+            "", (
+                ID pengguna,
+                hari ini.isoformat()
             ))
 
-            result = cursor.fetchone()
+            pengeluaran_hari_ini = kursor.ambil_satu()["pengeluaran_hari_ini"]
 
-            current_balance = (
-                budget["initial_balance"]
-                + result["income"]
-                - result["expense"]
+            # Menghitung pemasukan dan periode pengeluaran
+            kursor.eksekusi("""
+                MEMILIH
+                    COALESCE(SUM(CASE
+                        KETIKA ketik = 'pemasukan' MAKA jumlah
+                        LAINNYA 0
+                    SELESAI), 0) SEBAGAI pendapatan,
+                    COALESCE(SUM(CASE
+                        KETIKA tipe = 'pengeluaran' MAKA jumlah
+                        LAINNYA 0
+                    SELESAI), 0) SEBAGAI pengeluaran
+                DARI transaksi
+                DI MANA user_id = %s
+                DAN transaction_date ANTARA %s DAN %s
+            "", (
+                ID pengguna,
+                anggaran["tanggal_mulai"],
+                hari ini.isoformat()
+            ))
+
+            hasil = kursor.ambil_yang_di_kantongi()
+
+            saldo_saat_ini = (
+                anggaran["saldo_awal"]
+                + hasil["pendapatan"]
+                - hasil["pengeluaran"]
             )
 
-            remaining_days = (end_date - today).days + 1
+            sisa_hari = (tanggal_akhir - hari_ini).hari + 1
 
-            if current_balance < 0:
-                current_balance = 0
+            jika saldo saat ini < 0:
+                saldo_saat_ini = 0
 
-            analysis = analyze_finances(
-                spending_today=spending_today,
-                daily_budget=budget["daily_budget"],
-                current_balance=current_balance,
-                remaining_days=remaining_days
+            # Garis analisis Fuzzy Mamdani
+            analisis = menganalisis_keuangan(
+                pengeluaran_hari_ini=pengeluaran_hari_ini,
+                anggaran_harian=anggaran["anggaran_harian"],
+                saldo_saat_ini=saldo_saat_ini,
+                hari_tersisa=hari_tersisa
             )
 
-            return {
-                "tanggal_analisis": today.isoformat(),
-                "pengeluaran_hari_ini": spending_today,
-                "saldo_saat_ini": current_balance,
-                "anggaran_harian": budget["daily_budget"],
-                "sisa_hari": remaining_days,
-                "analisis_fuzzy": analysis
+            kembali {
+                "tanggal_analisis": hari ini.isoformat(),
+                "pengeluaran_hari_ini": pembelanjaan_hari ini,
+                "saldo_saat_ini": saldo_saat ini,
+                "anggaran_harian": anggaran["anggaran_harian"],
+                "sisa_hari": hari_tersisa,
+                "analisis_fuzzy": analisis
             }
 
-    finally:
-        conn.close()
+    Akhirnya:
+        koneksi.tutup()
 
 
-# Menghapus transaksi berdasarkan ID
+# =========================================================
+# MENGHAPUS TRANSAKSI
+# =========================================================
+
 @app.delete("/api/transactions/{transaction_id}")
-def delete_transaction(transaction_id: int):
+def delete_transaction(
+    ID transaksi: int,
+    Permintaan: Permintaan
+):
+    user_id = request.session["user_id"]
 
-    conn = get_connection()
+    koneksi = mendapatkan_koneksi()
 
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                "DELETE FROM transactions WHERE id = %s",
-                (transaction_id,)
-            )
+    mencoba:
+        dengan conn.cursor() sebagai kursor:
+            kursor.eksekusi("""
+                HAPUS DARI transaksi
+                DI MANA id = %s
+                DAN user_id = %s
+            "", (
+                ID transaksi,
+                ID pengguna
+            ))
 
-            if cursor.rowcount == 0:
-                raise HTTPException(
-                    status_code=404,
+            jika cursor.rowcount == 0:
+                menimbulkan HTTPException(
+                    kode_status=404,
                     detail="Transaksi tidak ditemukan"
                 )
 
-        conn.commit()
+        koneksi.commit()
 
-    except Exception:
-        conn.rollback()
-        raise
+    kecuali Pengecualian:
+        koneksi.rollback()
+        mengangkat
 
-    finally:
-        conn.close()
+    Akhirnya:
+        koneksi.tutup()
 
-    return {
+    kembali {
         "message": "Transaksi berhasil dihapus",
         "id": transaction_id
-    }
+}
